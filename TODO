@@ -1,0 +1,9 @@
+Models:
+  ☐ Rover
+    ☐ Protocol
+      ☐ Timeout
+      ☐ Buffer Management
+    ☐ Sender Module (Thread)
+    ☐ Receiver Module (Thread)
+  ☐ Thread Pool Manager
+  ☐ Helper
