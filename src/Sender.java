@@ -11,7 +11,6 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class Sender extends Thread {
@@ -32,6 +31,7 @@ public class Sender extends Thread {
         this.rover = rover;
         try {
             this.socket = new DatagramSocket();
+            System.out.println("Sending from: " + rover.getPort());
             this.segments = new ArrayList<>();
             this.address = InetAddress.getByName(rover.getMulticastIP());
             this.destinationRoverId = destinationRoverId;
@@ -63,7 +63,12 @@ public class Sender extends Thread {
                 protocol.setSeq(++sequence);
                 protocol.prepareSegment();
                 this.segments.add(protocol);
-                packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.rover.getPort());
+                packet = new DatagramPacket(
+                    protocol.getByteStream(),
+                    protocol.getByteStream().length,
+                    this.address,
+                    this.rover.getPort()
+                );
                 this.socket.send(packet);
                 offset += temp.length;
             }
@@ -89,19 +94,16 @@ public class Sender extends Thread {
 
     private byte[] sliceInEqualParts(byte[] byteArray, int start) {
         byte[] temp = new byte[RdtProtocol.DATAGRAM_LENGTH];
-        try{
-            for (int index = 0; index < temp.length; index++) {
+        for (int index = 0; index < temp.length; index++) {
+            try{
                 temp[index] = byteArray[index + start];
+            } catch (ArrayIndexOutOfBoundsException ex) {
+                temp[index] = (byte) 101;
+                temp[index+1] = (byte) 111;
+                temp[index+2] = (byte) 102;
+                break;
             }
-            return temp;
-        } catch (ArrayIndexOutOfBoundsException e) {
-            return temp;
         }
-    }
-
-    public static void main(String[] args) {
-        Sender sender = new Sender(new Rover((byte)(1), (byte)(2), 3000, "240.0.0.1"), (byte)2);
-        sender.setFile(new File("src/superman.txt"));
-        sender.run();
+        return temp;
     }
 }

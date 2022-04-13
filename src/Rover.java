@@ -1,7 +1,4 @@
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
 
 /**
  * This is the class that outlines the Rover and its functionalities
@@ -34,7 +31,9 @@ public class Rover {
      */
     public void initializeModules() {
         this.receiverModule = new Receiver(this);
+        System.out.println("This rover's receiver: " + this.receiverModule);
         this.senderModule = new Sender(this, this.destinationRoverId);
+        System.out.println("This rover's sender: " + this.receiverModule);
     }
 
     /**
@@ -99,5 +98,13 @@ public class Rover {
      */
     public void receiveData() {
         ThreadPoolManager.getThread().execute(this.receiverModule);
+    }
+
+    public static void main(String[] args) {
+        Rover rover = new Rover(
+            Byte.parseByte(args[0]),
+            Byte.parseByte(args[1]), 
+            Integer.parseInt(args[2]), "224.0.0.1");
+        System.out.println(rover);
     }
 }
