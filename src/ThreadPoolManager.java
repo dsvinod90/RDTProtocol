@@ -6,7 +6,7 @@ public class ThreadPoolManager {
     private static ExecutorService executorService;
 
     public static ExecutorService getThread() {
-        executorService = Executors.newFixedThreadPool(10);
+        executorService = Executors.newFixedThreadPool(12);
         return executorService;
     }
 }

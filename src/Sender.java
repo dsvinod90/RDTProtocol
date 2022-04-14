@@ -22,16 +22,19 @@ public class Sender extends Thread {
     private Rover rover; // Rover related to the sender
     private List<RdtProtocol> segments; // list of segments to be sent over the socket
     private byte destinationRoverId = 0;
+    private int receiverPort; // port of the receiver
+    private static int nextSeq = 0;
 
     /**
      * Constructor for the Sender
      * @param rover Rover
      */
-    public Sender(Rover rover, byte destinationRoverId) {
+    public Sender(Rover rover, byte destinationRoverId, int receiverPort) {
         this.rover = rover;
+        this.receiverPort = receiverPort;
         try {
             this.socket = new DatagramSocket();
-            System.out.println("Sending from: " + rover.getPort());
+            System.out.println("Sending from: " + this.socket.getLocalPort());
             this.segments = new ArrayList<>();
             this.address = InetAddress.getByName(rover.getMulticastIP());
             this.destinationRoverId = destinationRoverId;
@@ -61,6 +64,7 @@ public class Sender extends Thread {
                 byte[] temp = this.sliceInEqualParts(buf, offset);
                 RdtProtocol protocol = new RdtProtocol(temp, rover.getRoverId(), destinationRoverId);
                 protocol.setSeq(++sequence);
+                nextSeq = sequence+1;
                 protocol.prepareSegment();
                 this.segments.add(protocol);
                 packet = new DatagramPacket(
@@ -69,10 +73,12 @@ public class Sender extends Thread {
                     this.address,
                     this.rover.getPort()
                 );
+                System.out.println("Sending packet...");
                 this.socket.send(packet);
                 offset += temp.length;
+                sleep(50);
             }
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
     }
@@ -84,12 +90,18 @@ public class Sender extends Thread {
         protocol.setAcknowledgementNumber(ack);;
         protocol.prepareSegment();
         this.segments.add(protocol);
-        packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.rover.getPort());
+        System.out.println("Sending ACK to: " + destinationRoverId);
+        packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.receiverPort);
         try {
+            sleep(300);
             this.socket.send(packet);
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
+    }
+
+    public boolean verifyAcknowledgement(int ack) {
+        return ack == nextSeq;
     }
 
     private byte[] sliceInEqualParts(byte[] byteArray, int start) {

@@ -1,15 +1,19 @@
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
 /**
  * This is the class that outlines the custom reliable data transfer protocol which sits on top of UDP.
  * @author Vinod Dalavai - vd1605
  */
 public class RdtProtocol {
-    public static final int DATAGRAM_LENGTH = 1_024 * 2;
-    public static final int BUFFER_LENGTH = 100;
+    // Static variables for this class
+    // public static final int BUFFER_LENGTH             = 100;
+    public static final int DATAGRAM_LENGTH           = 1_024 * 2;
+    public static final int SEQ_END_POSITION          = 3;
+    public static final int ACK_FLAG_POSITION         = 6;
+    public static final int FIXED_HEADER_SIZE         = 12;
+    public static final int SEQ_START_POSITION        = 0;
+    public static final int SOURCE_ID_POSITION        = 4;
+    public static final int DESTINATION_ID_POSITION   = 5;
+    public static final int ACK_NUMBER_END_POSITION   = 11;
+    public static final int ACK_NUMBER_START_POSITION = 8;
     // Declare class fields
     private int seq; // Sequence number
     private byte sourceRoverId; // ID of the rover sending the data
@@ -18,7 +22,7 @@ public class RdtProtocol {
     private boolean nak = false; // Negative acknowledgement flag
     private int acknowledgementNumber = 0; // Acknowledgement or Negative acknowledgement based on the respective boolean flags
     private String checksum; // Checksum value of the current segment
-    private byte[] byteSequence = new byte[DATAGRAM_LENGTH + BUFFER_LENGTH];  // byte sequence that will be passed to the application at the listening port
+    private byte[] byteSequence = new byte[DATAGRAM_LENGTH + FIXED_HEADER_SIZE];  // byte sequence that will be passed to the application at the listening port
     private byte[] inputData; // Data to be added to the RDT body
     private String data; // string data to be sent
 

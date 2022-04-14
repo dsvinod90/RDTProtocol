@@ -5,7 +5,7 @@ ROVER = rover
 
 $(ROVER):
 	@echo "Executing program..."
-	@cd byteCode && java Main $(id) $(receiver) $(port) $(multicastIP) $(action)
+	@cd byteCode && java Main $(id) $(receiver) $(listen) $(multicastIP) $(action)
 
 $(NASA): $(MAKEDIR)
 	@echo "Compiling program..."
