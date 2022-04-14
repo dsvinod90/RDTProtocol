@@ -1,2 +1,0 @@
-Hello World. 
-This is the lunar rover contacting the earth.
