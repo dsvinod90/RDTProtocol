@@ -10,6 +10,7 @@ import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,9 +20,9 @@ import java.util.Set;
 import java.util.TreeMap;
 
 public class Receiver extends Thread {
-    private static final byte TRUE = (byte) 1;
-    private static final byte FALSE = (byte) 0;
-    private static final int BUFFER_SIZE = 20;
+    private static final byte TRUE      = (byte) 1;
+    private static final byte FALSE     = (byte) 0;
+    public static final int BUFFER_SIZE = 20;
     // Class fields
     private MulticastSocket socket; // Socket on which the RDT will be operating
     private InetAddress group; // group subscribed to the multicast IP
@@ -33,6 +34,8 @@ public class Receiver extends Thread {
     private FileOutputStream fos = null; // Output stream that writes to file
     private String fileExtension = "JPG"; // Extension of the output file
     public static Receiver receiver = null; // static object of the same class
+    private static int previousAck = 1;
+    private static int currentAck = 1;
 
     /**
      * Empty constructor for this class
@@ -96,11 +99,12 @@ public class Receiver extends Thread {
                     // if incoming packet is an acknowledgement
                     if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
                         // this.rover.getSenderModule().wait();
-                        int ack = this.getAcknowledgementNumber(incomingBytes);
-                        System.out.println("ACK Received: " + ack);
-                        if (this.rover.getSenderModule().verifyAcknowledgement(ack)) {
+                        previousAck = currentAck;
+                        currentAck = this.getAcknowledgementNumber(incomingBytes);
+                        System.out.println("ACK Received: " + currentAck);
+                        if (this.rover.getSenderModule().verifyAcknowledgement(currentAck)) {
                             System.out.println("ALL OKAY!");
-                            // this.rover.notifyAll();
+                            this.notifySenderToResumeSending();
                         }
                     } else { // if incoming packet is not an acknowledgement
                         this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
@@ -112,6 +116,11 @@ public class Receiver extends Thread {
         }
     }
 
+    private void notifySenderToResumeSending() {
+        synchronized(this.rover) {
+            this.rover.notifyAll();
+        }
+    }
     /**
      * Method to set the file extension of the output file
      */
@@ -218,14 +227,18 @@ public class Receiver extends Thread {
     private boolean isPacketMissing() {
         boolean isMissing = false;
         Set<Integer> sequences = packetArray.keySet();
-        int minSequence = Collections.min(sequences);
-        int maxSequence = Collections.max(sequences);
+        System.out.println("Set of all SEQ: " + Arrays.toString(sequences.toArray()));
+        int minSequence = previousAck;
+        System.out.println("Min Sequence: " + minSequence);
+        int maxSequence = minSequence + (BUFFER_SIZE - 1);
+        System.out.println("Max Sequence: " + maxSequence);
         for (int index = minSequence; index <= maxSequence; index++) {
             if (!sequences.contains(index)) {
                 isMissing = true;
                 missingSequences.add(index);
             }
         }
+        System.out.println("No missing packets....");
         return isMissing;
     }
 
@@ -278,11 +291,16 @@ public class Receiver extends Thread {
      */
     private void processIncomingBytes(byte[] incomingBytes, int seq, byte sendingRoverId) throws IOException {
         byte[] relevantBytes = RdtProtocol.extractData(incomingBytes);
-        if (packetArray.size() < BUFFER_SIZE) {
+        if (packetArray.size() < BUFFER_SIZE - 1) {
+            System.out.println("Receiving SEQ: " + seq);
+            System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
             packetArray.put(seq, relevantBytes);
-        } else if (packetArray.size() == BUFFER_SIZE) {
+        } else if (packetArray.size() == BUFFER_SIZE - 1) {
+            System.out.println("Receiving SEQ: " + seq);
+            System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
             packetArray.put(seq, relevantBytes);
             this.rover.getSenderModule().sendAcknowledgement(seq+1, sendingRoverId);
+            System.out.println("Next exptected SEQ: " + currentAck);
         } else {
             if (!isPacketMissing()) {
                 if (isPacketInSequence()) {
@@ -292,6 +310,8 @@ public class Receiver extends Thread {
                     this.writeToFile(sorted);
                 }
                 this.runGarbageCollector();
+            } else {
+                System.out.println("Missing packets with SEQ: " + Arrays.toString(missingSequences.toArray()));
             }
         }
     }

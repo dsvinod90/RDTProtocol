@@ -24,6 +24,7 @@ public class Sender extends Thread {
     private byte destinationRoverId = 0;
     private int receiverPort; // port of the receiver
     private static int nextSeq = 0;
+    private static boolean okay = true;
 
     /**
      * Constructor for the Sender
@@ -61,25 +62,41 @@ public class Sender extends Thread {
             int offset = 0;
             byte[] buf = fis.readAllBytes();
             while(offset < buf.length) {
-                byte[] temp = this.sliceInEqualParts(buf, offset);
-                RdtProtocol protocol = new RdtProtocol(temp, rover.getRoverId(), destinationRoverId);
-                protocol.setSeq(++sequence);
-                nextSeq = sequence+1;
-                protocol.prepareSegment();
-                this.segments.add(protocol);
-                packet = new DatagramPacket(
-                    protocol.getByteStream(),
-                    protocol.getByteStream().length,
-                    this.address,
-                    this.rover.getPort()
-                );
-                System.out.println("Sending packet...");
-                this.socket.send(packet);
-                offset += temp.length;
-                sleep(50);
+                for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
+                    byte[] temp = this.sliceInEqualParts(buf, offset);
+                    RdtProtocol protocol = new RdtProtocol(temp, rover.getRoverId(), destinationRoverId);
+                    protocol.setSeq(++sequence);
+                    nextSeq = sequence+1;
+                    protocol.prepareSegment();
+                    this.segments.add(protocol);
+                    packet = new DatagramPacket(
+                        protocol.getByteStream(),
+                        protocol.getByteStream().length,
+                        this.address,
+                        this.rover.getPort()
+                    );
+                    System.out.println("Sending SEQ: " + protocol.getSeq());
+                    this.socket.send(packet);
+                    offset += temp.length;
+                }
+                this.waitForAcknowledgement();
+                sleep(20);
             }
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void waitForAcknowledgement() {
+        synchronized(this.rover) {
+            try {
+                this.rover.wait();
+                System.out.println("Resume sending");    
+            } catch (InterruptedException e) {
+                if (!okay) {
+                    System.out.println("Handle this scenario");
+                }
+            }
         }
     }
 
