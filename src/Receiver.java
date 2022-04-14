@@ -34,7 +34,8 @@ public class Receiver extends Thread {
     private FileOutputStream fos = null; // Output stream that writes to file
     private String fileExtension = "JPG"; // Extension of the output file
     public static Receiver receiver = null; // static object of the same class
-    private static int previousAck = 1;
+    private static int previousStartSeqOfPacketArray = 0;
+    private static int currentStartSeqOfPacketArray = 1;
     private static int currentAck = 1;
 
     /**
@@ -99,7 +100,6 @@ public class Receiver extends Thread {
                     // if incoming packet is an acknowledgement
                     if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
                         // this.rover.getSenderModule().wait();
-                        previousAck = currentAck;
                         currentAck = this.getAcknowledgementNumber(incomingBytes);
                         System.out.println("ACK Received: " + currentAck);
                         if (this.rover.getSenderModule().verifyAcknowledgement(currentAck)) {
@@ -228,9 +228,9 @@ public class Receiver extends Thread {
         boolean isMissing = false;
         Set<Integer> sequences = packetArray.keySet();
         System.out.println("Set of all SEQ: " + Arrays.toString(sequences.toArray()));
-        int minSequence = previousAck;
+        int minSequence = previousStartSeqOfPacketArray;
         System.out.println("Min Sequence: " + minSequence);
-        int maxSequence = minSequence + (BUFFER_SIZE - 1);
+        int maxSequence = previousStartSeqOfPacketArray + (BUFFER_SIZE - 1);
         System.out.println("Max Sequence: " + maxSequence);
         for (int index = minSequence; index <= maxSequence; index++) {
             if (!sequences.contains(index)) {
@@ -238,7 +238,7 @@ public class Receiver extends Thread {
                 missingSequences.add(index);
             }
         }
-        System.out.println("No missing packets....");
+        if(!isMissing) System.out.println("No Missing Packets...");
         return isMissing;
     }
 
@@ -293,15 +293,13 @@ public class Receiver extends Thread {
         byte[] relevantBytes = RdtProtocol.extractData(incomingBytes);
         if (packetArray.size() < BUFFER_SIZE - 1) {
             System.out.println("Receiving SEQ: " + seq);
-            System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
             packetArray.put(seq, relevantBytes);
         } else if (packetArray.size() == BUFFER_SIZE - 1) {
             System.out.println("Receiving SEQ: " + seq);
-            System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
+            // System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
             packetArray.put(seq, relevantBytes);
-            this.rover.getSenderModule().sendAcknowledgement(seq+1, sendingRoverId);
-            System.out.println("Next exptected SEQ: " + currentAck);
-        } else {
+            previousStartSeqOfPacketArray = currentStartSeqOfPacketArray;
+            currentStartSeqOfPacketArray = seq+1;
             if (!isPacketMissing()) {
                 if (isPacketInSequence()) {
                     this.writeToFile(packetArray);
@@ -310,9 +308,11 @@ public class Receiver extends Thread {
                     this.writeToFile(sorted);
                 }
                 this.runGarbageCollector();
+                this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId);
             } else {
                 System.out.println("Missing packets with SEQ: " + Arrays.toString(missingSequences.toArray()));
             }
+            System.out.println("Next exptected SEQ: " + currentStartSeqOfPacketArray);
         }
     }
 

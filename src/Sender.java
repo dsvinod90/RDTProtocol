@@ -80,9 +80,8 @@ public class Sender extends Thread {
                     offset += temp.length;
                 }
                 this.waitForAcknowledgement();
-                sleep(20);
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
