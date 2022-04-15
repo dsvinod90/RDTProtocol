@@ -61,6 +61,7 @@ public class Receiver extends Thread {
             this.socket = new MulticastSocket(rover.getPort());
             this.socket.joinGroup(this.group);
             if (rover.getAction().equalsIgnoreCase("receive")) {
+                System.out.println("Setting SO_TIMEOUT");
                 this.socket.setSoTimeout(5_000);
             }
             System.out.println("Listening on port: " + rover.getPort());
@@ -117,7 +118,6 @@ public class Receiver extends Thread {
                         byte[] missingSequenceArray = RdtProtocol.extractData(incomingBytes);
                         this.notifySenderToResendPackets(missingSequenceArray);
                     } else { // if incoming packet is a datagram with file contents
-                        System.out.println(">> Receiving packet: " + seq);
                         if (missingSequences.size() > 0 && missingSequences.contains(seq)) { // if there are missing packets check if all have arrived now
                             System.out.println(">> Received missing packets");
                             System.out.println(">> Packet Array Size: " + packetArray.size());

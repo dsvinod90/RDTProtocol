@@ -75,7 +75,6 @@ public class Sender extends Thread {
             int sequence = 0;
             int offset = 0;
             byte[] buf = fis.readAllBytes();
-            int counter = 0; // TO BE DELETED
             while(offset < buf.length) {
                 for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
                     byte[] temp = this.sliceInEqualParts(buf, offset);
@@ -90,10 +89,6 @@ public class Sender extends Thread {
                         this.address,
                         this.rover.getPort()
                     );
-                    counter++; // TO BE DELETED
-                    if (counter < 2) { // TO BE DELETED
-                        continue; // TO BE DELETED
-                    } // TO BE DELETED
                     this.socket.send(packet);
                     offset += temp.length;
                 }
