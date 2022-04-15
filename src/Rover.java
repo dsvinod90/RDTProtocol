@@ -1,4 +1,5 @@
 import java.io.File;
+import java.util.concurrent.ExecutorService;
 
 /**
  * This is the class that outlines the Rover and its functionalities
@@ -143,7 +144,10 @@ public class Rover extends Thread {
     public void sendFile() {
         this.senderModule.setFile(new File(this.filePath));
         this.receiverModule.setFileExtension(getFileExtension());
-        ThreadPoolManager.getThread().execute(this.senderModule);
+        ExecutorService service = ThreadPoolManager.getThread();
+        service.execute(this.senderModule);
+        System.out.println("Sender terminating...");
+        service.shutdown();
     }
 
     /**
@@ -161,15 +165,5 @@ public class Rover extends Thread {
      */
     private void receiveData() {
         ThreadPoolManager.getThread().execute(this.receiverModule);
-    }
-
-    /**
-     * Only for testing pursposes
-     * @param args
-     */
-    public static void main(String[] args) {
-        Rover rover = new Rover((byte)1, (byte)2, 3000, "224.0.0.1", "sender");
-        rover.setFilePath("randomfile.txt");
-        System.out.println(rover.getFileExtension());
     }
 }

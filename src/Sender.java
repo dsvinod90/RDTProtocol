@@ -4,12 +4,15 @@
  */
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -99,6 +102,8 @@ public class Sender extends Thread {
             System.out.println(">> Data sent successfully: Closing socket");
             this.sendFinishPacket();
             socket.close();
+            fis.close();
+            this.interrupt();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -123,10 +128,14 @@ public class Sender extends Thread {
         }
     }
 
+    /**
+     * Method to resend missing packets
+     */
     private void resendMissingPackets() {
         System.out.println(">> Inside Resend Packet:");
         for (RdtProtocol protocol : this.segments) {
             for (int missingSequence : missingSequenceNumbers) {
+                System.out.println("Missing sequences: " + missingSequence);
                 if (missingSequence == 0) continue;
                 if (missingSequence == protocol.getSeq()) {
                     packet = new DatagramPacket(
@@ -220,20 +229,20 @@ public class Sender extends Thread {
      * @param start     int
      * @return          byte[]
      */
-    private byte[] sliceInEqualParts(byte[] byteArray, int start) {
-        byte[] temp = new byte[RdtProtocol.DATAGRAM_LENGTH];
-        for (int index = 0; index < temp.length; index++) {
-            try{
-                temp[index] = byteArray[index + start];
-            } catch (ArrayIndexOutOfBoundsException ex) {
-                // temp[index] = (byte) 101;
-                // temp[index+1] = (byte) 111;
-                // temp[index+2] = (byte) 102;
-                break;
-            }
-        }
-        return temp;
-    }
+    // private byte[] sliceInEqualParts(byte[] byteArray, int start) {
+    //     byte[] temp = new byte[RdtProtocol.DATAGRAM_LENGTH];
+    //     for (int index = 0; index < temp.length; index++) {
+    //         try{
+    //             temp[index] = byteArray[index + start];
+    //         } catch (ArrayIndexOutOfBoundsException ex) {
+    //             // temp[index] = (byte) 101;
+    //             // temp[index+1] = (byte) 111;
+    //             // temp[index+2] = (byte) 102;
+    //             break;
+    //         }
+    //     }
+    //     return temp;
+    // }
 
     /**
      * Method to convert Rover ID to IP Address
@@ -253,9 +262,14 @@ public class Sender extends Thread {
         byte[] byteArray = new byte[numbers.size() * 4];
         int index = 0;
         for (int number : numbers) {
-           byteArray[index++] = (byte) (number >> 24);
-           byteArray[index++] = (byte) (number >> 16);
-           byteArray[index++] = (byte) (number >> 8);
+            // byte[] temp = ByteBuffer.allocate(4).order(ByteOrder.nativeOrder()).putInt(number).array();
+            // byteArray[index++] = temp[3];
+            // byteArray[index++] = temp[2];
+            // byteArray[index++] = temp[1];
+            // byteArray[index++] = temp[0];
+           byteArray[index++] = (byte) (number >>> 24);
+           byteArray[index++] = (byte) (number >>> 16);
+           byteArray[index++] = (byte) (number >>> 8);
            byteArray[index++] = (byte) (number);
         }
         return byteArray;

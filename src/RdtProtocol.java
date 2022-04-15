@@ -1,3 +1,5 @@
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 
 /**
@@ -28,7 +30,7 @@ public class RdtProtocol {
     private int acknowledgementNumber = 0; // Acknowledgement or Negative acknowledgement based on the respective boolean flags
     private String checksum; // Checksum value of the current segment
     private byte[] byteSequence = new byte[DATAGRAM_LENGTH + FIXED_HEADER_SIZE];  // byte sequence that will be passed to the application at the listening port
-    private byte[] inputData; // Data to be added to the RDT body
+    public byte[] inputData; // Data to be added to the RDT body
     private String data; // string data to be sent
 
     /**
@@ -156,19 +158,19 @@ public class RdtProtocol {
      */
     public void prepareSegment() {
         int index = 0;
-        byteSequence[index++] = (byte) (this.seq >> 24);
-        byteSequence[index++] = (byte) (this.seq >> 16);
-        byteSequence[index++] = (byte) (this.seq >> 8);
-        byteSequence[index++] = (byte) (this.seq);
+        byteSequence[index++] = (byte) (this.seq >>> 24);
+        byteSequence[index++] = (byte) (this.seq >>> 16);
+        byteSequence[index++] = (byte) (this.seq >>> 8);
+        byteSequence[index++] = (byte) (this.seq >>> 0);
         byteSequence[index++] = this.sourceRoverId;
         byteSequence[index++] = this.destinationRoverId;
         byteSequence[index++] = (this.ack) ? (byte)1 : (byte)0;
         byteSequence[index++] = (this.nak) ? (byte)1 : (byte)0;
         byteSequence[index++] = (this.fin) ? (byte)1 : (byte)0;
-        byteSequence[index++] = (byte) (this.acknowledgementNumber >> 24);
-        byteSequence[index++] = (byte) (this.acknowledgementNumber >> 16);
-        byteSequence[index++] = (byte) (this.acknowledgementNumber >> 8);
-        byteSequence[index++] = (byte) (this.acknowledgementNumber);
+        byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 24);
+        byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 16);
+        byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 8);
+        byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 0);
         if (this.inputData != null) {
             for (int ind = 0; ind < this.inputData.length; ind++) {
                 byteSequence[index++] = this.inputData[ind];
@@ -182,7 +184,7 @@ public class RdtProtocol {
      * @return
      */
     public static byte[] extractData(byte[] udpData) {
-        byte[] dataBytes = new byte[udpData.length];
+        byte[] dataBytes = new byte[udpData.length - FIXED_HEADER_SIZE];
         int ind = SEQ_START_POSITION;
         int startIndex = FIXED_HEADER_SIZE;
         for (int index = startIndex; index < udpData.length; index++) {

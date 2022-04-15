@@ -21,7 +21,6 @@ import java.util.TreeMap;
 
 public class Receiver extends Thread {
     private static final byte TRUE      = (byte) 1;
-    private static final byte FALSE     = (byte) 0;
     public static final int BUFFER_SIZE = 20;
     // Class fields
     private MulticastSocket socket; // Socket on which the RDT will be operating
@@ -32,7 +31,7 @@ public class Receiver extends Thread {
     private LinkedHashMap<Integer, byte[]> packetArray; // receiver buffer for tracking packets
     private List<Integer> missingSequences; // Set of missing sequence numbers
     private FileOutputStream fos = null; // Output stream that writes to file
-    private String fileExtension = "JPG"; // Extension of the output file
+    private String fileExtension = "jpg"; // Extension of the output file
     public static Receiver receiver = null; // static object of the same class
     private static int previousStartSeqOfPacketArray = 1;
     private static int currentStartSeqOfPacketArray = 1;
@@ -138,7 +137,7 @@ public class Receiver extends Thread {
                     }
                 }
             } catch (IOException e) {
-                if (e.getMessage().equals("Receive timed out") && isPacketMissing()) {
+                if (e.getMessage().equals("Receive timed out") && this.packetArray.size() > 0 && isPacketMissing()) {
                     System.out.println("[!!!] Processing socket timeout");
                     this.rover.getSenderModule().sendNegativeAcknowledgement(missingSequences, sendingRoverId);
                 }
@@ -163,14 +162,15 @@ public class Receiver extends Thread {
         System.out.println(">> Notifying sender to resend missing packets");
         this.rover.getSenderModule().setResendFlag(true);
         List<Integer> tempList = new ArrayList<>();
-        for (int index = 0; index < missingSequenceArray.length; index += 4) {
+        for (int index = 0; index < missingSequenceArray.length - 4; index += 4) {
             tempList.add(
-                (missingSequenceArray[index] << 24 |
-                missingSequenceArray[index + 1] << 16 |
-                missingSequenceArray[index + 2] << 8 |
-                missingSequenceArray[index + 3])
+                ((missingSequenceArray[index] & 0xff) << 24 |
+                (missingSequenceArray[index + 1] & 0xff) << 16 |
+                (missingSequenceArray[index + 2] & 0xff) << 8 |
+                (missingSequenceArray[index + 3] & 0xff) << 0)
             );
         }
+        System.out.println("Missing sequence Array Length: " + tempList);
         this.rover.getSenderModule().setMissingSequenceNumbers(tempList);
         notifySender();
     }
@@ -255,7 +255,7 @@ public class Receiver extends Thread {
      * @return          int
      */
     private int convertByteToInt(byte[] byteArr) {
-        return (byteArr[0] << 24 | byteArr[1] << 16 | byteArr[2] << 8 | byteArr[3]);
+        return ((byteArr[0] & 0xff) << 24 | (byteArr[1] & 0xff) << 16 | (byteArr[2] & 0xff) << 8 | (byteArr[3] & 0xff) << 0);
     }
 
     /**
