@@ -34,7 +34,7 @@ public class Receiver extends Thread {
     private FileOutputStream fos = null; // Output stream that writes to file
     private String fileExtension = "JPG"; // Extension of the output file
     public static Receiver receiver = null; // static object of the same class
-    private static int previousStartSeqOfPacketArray = 0;
+    private static int previousStartSeqOfPacketArray = 1;
     private static int currentStartSeqOfPacketArray = 1;
     private static int currentAck = 1;
     private byte sendingRoverId;
@@ -53,7 +53,7 @@ public class Receiver extends Thread {
         this.rover = rover;
         this.packetArray = new LinkedHashMap<>(BUFFER_SIZE);
         this.missingSequences = new ArrayList<>();
-        this.buf = new byte[RdtProtocol.DATAGRAM_LENGTH];
+        this.buf = new byte[RdtProtocol.DATAGRAM_LENGTH + RdtProtocol.FIXED_HEADER_SIZE];
         this.packet = new DatagramPacket(buf, buf.length);
         try {
             this.group = InetAddress.getByName(rover.getMulticastIP());
@@ -117,6 +117,11 @@ public class Receiver extends Thread {
                         System.out.println(">> NAK Received: ");
                         byte[] missingSequenceArray = RdtProtocol.extractData(incomingBytes);
                         this.notifySenderToResendPackets(missingSequenceArray);
+                    } else if (this.incomingPacketIsFinishMessage(incomingBytes)) {
+                        System.out.println(">> FIN Received: ");
+                        System.out.println(">> File has been downloaded");
+                        System.out.println("------------------------------------------------------------------------------");
+                        break;
                     } else { // if incoming packet is a datagram with file contents
                         if (missingSequences.size() > 0 && missingSequences.contains(seq)) { // if there are missing packets check if all have arrived now
                             System.out.println(">> Received missing packets");
@@ -258,16 +263,16 @@ public class Receiver extends Thread {
      * @param packet    byte[]
      * @return          boolean
      */
-    private boolean isLastPacket(byte[] packet) {
-        int index = packet.length - 1;
-        while (index >= 2) {
-            if (packet[index] == 102 && packet[index - 1] == 111 && packet[index - 2] == 101) {
-                return true;
-            }
-            index --;
-        }
-        return false;
-    }
+    // private boolean isLastPacket(byte[] packet) {
+    //     int index = packet.length - 1;
+    //     while (index >= 2) {
+    //         if (packet[index] == 102 && packet[index - 1] == 111 && packet[index - 2] == 101) {
+    //             return true;
+    //         }
+    //         index --;
+    //     }
+    //     return false;
+    // }
 
     /**
      * Method to check if any packet is missing based on the sequence numbers received
@@ -344,6 +349,10 @@ public class Receiver extends Thread {
         return (incomingBytes[RdtProtocol.NAK_FLAG_POSITION] == TRUE);
     }
 
+    private boolean incomingPacketIsFinishMessage(byte[] incomingBytes) {
+        return (incomingBytes[RdtProtocol.FIN_FLAG_POSITION] == TRUE);
+    }
+
     /**
      * Method to process the incoming bytes and deliver to the application layer at the receiving end
      * @param incomingBytes     byte[]
@@ -355,12 +364,8 @@ public class Receiver extends Thread {
         byte[] relevantBytes = RdtProtocol.extractData(incomingBytes);
         if (packetArray.size() < BUFFER_SIZE - 1) {
             packetArray.put(seq, relevantBytes);
-            // System.out.println("Packet size is less than buffer size: " + packetArray.size());
         } else if (packetArray.size() == BUFFER_SIZE - 1) {
             packetArray.put(seq, relevantBytes);
-            // System.out.println("Packet size is equal to buffer size: " + packetArray.size());
-            // previousStartSeqOfPacketArray = currentStartSeqOfPacketArray;
-            // currentStartSeqOfPacketArray = seq+1;
             List<Integer> tempList = new ArrayList<>();
             for (Map.Entry<Integer, byte[]> entry : packetArray.entrySet()) {
                 tempList.add(entry.getKey());

@@ -26,7 +26,7 @@ public class Sender extends Thread {
     private static int nextSeq = 0; //next expected sequence number
     private static int sendersSeq = 0; // seq of the sender
     private static boolean resend = false; // flag to resend packets
-    private List<Integer> missingSequenceNumbers = new ArrayList<>();
+    private List<Integer> missingSequenceNumbers = new ArrayList<>(); //sequences missing
 
     /**
      * Constructor for the Sender
@@ -73,16 +73,17 @@ public class Sender extends Thread {
         try {
             FileInputStream fis = new FileInputStream(this.file);
             int sequence = 0;
-            int offset = 0;
-            byte[] buf = fis.readAllBytes();
-            while(offset < buf.length) {
+            byte[] tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
+            boolean quit = false;
+            while (!quit) {
                 for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
-                    byte[] temp = this.sliceInEqualParts(buf, offset);
-                    RdtProtocol protocol = new RdtProtocol(temp, rover.getRoverId(), destinationRoverId);
+                    if (fis.read(tempBuffer) == -1) quit = true;
+                    RdtProtocol protocol = new RdtProtocol(tempBuffer, rover.getRoverId(), destinationRoverId);
                     protocol.setSeq(++sequence);
                     nextSeq = sequence+1;
                     protocol.prepareSegment();
                     this.segments.add(protocol);
+                    // System.out.println("Byte stream length: " + protocol.getByteStream().length);
                     packet = new DatagramPacket(
                         protocol.getByteStream(),
                         protocol.getByteStream().length,
@@ -90,10 +91,14 @@ public class Sender extends Thread {
                         this.rover.getPort()
                     );
                     this.socket.send(packet);
-                    offset += temp.length;
+                    tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
                 }
                 this.waitForAcknowledgement();
             }
+
+            System.out.println(">> Data sent successfully: Closing socket");
+            this.sendFinishPacket();
+            socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -123,7 +128,6 @@ public class Sender extends Thread {
         for (RdtProtocol protocol : this.segments) {
             for (int missingSequence : missingSequenceNumbers) {
                 if (missingSequence == 0) continue;
-                // System.out.println("Missing sequence numbers: " + missingSequence);
                 if (missingSequence == protocol.getSeq()) {
                     packet = new DatagramPacket(
                         protocol.getByteStream(),
@@ -186,6 +190,21 @@ public class Sender extends Thread {
         }
     }
 
+    private void sendFinishPacket() {
+        RdtProtocol protocol = new RdtProtocol(null, this.rover.getRoverId(), this.destinationRoverId);
+        protocol.setSeq(sendersSeq + 1);
+        protocol.setFin(true);
+        protocol.prepareSegment();
+        this.segments.add(protocol);
+        System.out.println(">> Sending FIN to: " + this.getIpAddressFromRoverId(destinationRoverId));
+        packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.receiverPort);
+        try{
+            this.socket.send(packet);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * Method to check if received acknowledgement is as expected
      * @param ack   int
@@ -207,9 +226,9 @@ public class Sender extends Thread {
             try{
                 temp[index] = byteArray[index + start];
             } catch (ArrayIndexOutOfBoundsException ex) {
-                temp[index] = (byte) 101;
-                temp[index+1] = (byte) 111;
-                temp[index+2] = (byte) 102;
+                // temp[index] = (byte) 101;
+                // temp[index+1] = (byte) 111;
+                // temp[index+2] = (byte) 102;
                 break;
             }
         }

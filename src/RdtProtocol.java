@@ -1,3 +1,5 @@
+import java.util.Arrays;
+
 /**
  * This is the class that outlines the custom reliable data transfer protocol which sits on top of UDP.
  * @author Vinod Dalavai - vd1605
@@ -9,18 +11,20 @@ public class RdtProtocol {
     public static final int SEQ_END_POSITION          = 3;
     public static final int ACK_FLAG_POSITION         = 6;
     public static final int NAK_FLAG_POSITION         = 7;
-    public static final int FIXED_HEADER_SIZE         = 12;
+    public static final int FIN_FLAG_POSITION         = 8;
+    public static final int FIXED_HEADER_SIZE         = 13;
     public static final int SEQ_START_POSITION        = 0;
     public static final int SOURCE_ID_POSITION        = 4;
     public static final int DESTINATION_ID_POSITION   = 5;
-    public static final int ACK_NUMBER_END_POSITION   = 11;
-    public static final int ACK_NUMBER_START_POSITION = 8;
+    public static final int ACK_NUMBER_END_POSITION   = 12;
+    public static final int ACK_NUMBER_START_POSITION = 9;
     // Declare class fields
     private int seq; // Sequence number
     private byte sourceRoverId; // ID of the rover sending the data
     private byte destinationRoverId; // ID of the rover receiving the data
     private boolean ack = false; // Acknowledgement flag
     private boolean nak = false; // Negative acknowledgement flag
+    private boolean fin = false; // Finish flag
     private int acknowledgementNumber = 0; // Acknowledgement or Negative acknowledgement based on the respective boolean flags
     private String checksum; // Checksum value of the current segment
     private byte[] byteSequence = new byte[DATAGRAM_LENGTH + FIXED_HEADER_SIZE];  // byte sequence that will be passed to the application at the listening port
@@ -86,6 +90,13 @@ public class RdtProtocol {
     }
 
     /**
+     * Setter method for Finish message
+     * @param fin
+     */
+    public void setFin(boolean fin) {
+        this.fin = fin;
+    }
+    /**
      * Getter method for Checksum
      * @return  String
      */
@@ -108,22 +119,6 @@ public class RdtProtocol {
     public byte[] getByteStream() {
         return byteSequence;
     }
-
-    /**
-     * Getter method for offset
-     * @return  int
-     */
-    // public int getOffset() {
-    //     return this.offset;
-    // }
-
-    /**
-     * Setter method for offset
-     * @param offset    int
-     */
-    // public void setOffset(int offset) {
-    //     this.offset = offset;
-    // }
 
     /**
      * Getter for Acknowledgement number
@@ -169,6 +164,7 @@ public class RdtProtocol {
         byteSequence[index++] = this.destinationRoverId;
         byteSequence[index++] = (this.ack) ? (byte)1 : (byte)0;
         byteSequence[index++] = (this.nak) ? (byte)1 : (byte)0;
+        byteSequence[index++] = (this.fin) ? (byte)1 : (byte)0;
         byteSequence[index++] = (byte) (this.acknowledgementNumber >> 24);
         byteSequence[index++] = (byte) (this.acknowledgementNumber >> 16);
         byteSequence[index++] = (byte) (this.acknowledgementNumber >> 8);
@@ -187,8 +183,8 @@ public class RdtProtocol {
      */
     public static byte[] extractData(byte[] udpData) {
         byte[] dataBytes = new byte[udpData.length];
-        int ind = 0;
-        int startIndex = 12;
+        int ind = SEQ_START_POSITION;
+        int startIndex = FIXED_HEADER_SIZE;
         for (int index = startIndex; index < udpData.length; index++) {
             dataBytes[ind++] = udpData[index];
         }
