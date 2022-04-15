@@ -11,7 +11,7 @@ public class Main {
         int receiverPort = Integer.parseInt(args[2]);
         String multicastIP = args[3];
         String action = args[4];
-        Rover.createInstance(sendingRoverId, receivingRoverId, receiverPort, multicastIP);
+        Rover.createInstance(sendingRoverId, receivingRoverId, receiverPort, multicastIP, action);
         Rover rover = Rover.fetchInstance();
         System.out.println("Rover deployed on the lunar surface");
         ThreadPoolManager.getThread().submit(rover);

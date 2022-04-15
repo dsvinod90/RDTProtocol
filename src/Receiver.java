@@ -37,6 +37,8 @@ public class Receiver extends Thread {
     private static int previousStartSeqOfPacketArray = 0;
     private static int currentStartSeqOfPacketArray = 1;
     private static int currentAck = 1;
+    private byte sendingRoverId;
+    private byte receivingRoverId;
 
     /**
      * Empty constructor for this class
@@ -58,6 +60,9 @@ public class Receiver extends Thread {
             this.fos = new FileOutputStream(new File(this.receivedFileName()));
             this.socket = new MulticastSocket(rover.getPort());
             this.socket.joinGroup(this.group);
+            if (rover.getAction().equalsIgnoreCase("receive")) {
+                this.socket.setSoTimeout(5_000);
+            }
             System.out.println("Listening on port: " + rover.getPort());
         } catch (IOException e) {
             e.printStackTrace();
@@ -88,39 +93,83 @@ public class Receiver extends Thread {
      */
     @Override
     public void run() {
-        try {
-            while(true) {
+        while(true) {
+            try {
                 this.socket.receive(packet);
                 byte[] incomingBytes = packet.getData();
                 int seq = this.getSequenceNumber(incomingBytes);
-                byte sendingRoverId = incomingBytes[RdtProtocol.SOURCE_ID_POSITION];
-                byte receivingRoverId = incomingBytes[RdtProtocol.DESTINATION_ID_POSITION];
+                sendingRoverId = incomingBytes[RdtProtocol.SOURCE_ID_POSITION];
+                receivingRoverId = incomingBytes[RdtProtocol.DESTINATION_ID_POSITION];
                 // if receiveing rover id is this rover or is all the rovers
                 if (receivingRoverId == this.rover.getRoverId() || receivingRoverId == 0) {
                     // if incoming packet is an acknowledgement
                     if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
                         // this.rover.getSenderModule().wait();
                         currentAck = this.getAcknowledgementNumber(incomingBytes);
-                        System.out.println("ACK Received: " + currentAck);
+                        System.out.println(">> ACK Received: " + currentAck);
                         if (this.rover.getSenderModule().verifyAcknowledgement(currentAck)) {
-                            System.out.println("ALL OKAY!");
-                            this.notifySenderToResumeSending();
+                            System.out.println(">> ALL OKAY!");
+                            this.notifySender();
                         }
-                    } else { // if incoming packet is not an acknowledgement
-                        this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                        // if incoming packet is a negative acknowledgement
+                    } else if (this.incomingPacketIsNegativeAcknowledgement(incomingBytes)) {
+                        System.out.println(">> NAK Received: ");
+                        byte[] missingSequenceArray = RdtProtocol.extractData(incomingBytes);
+                        this.notifySenderToResendPackets(missingSequenceArray);
+                    } else { // if incoming packet is a datagram with file contents
+                        System.out.println(">> Receiving packet: " + seq);
+                        if (missingSequences.size() > 0 && missingSequences.contains(seq)) { // if there are missing packets check if all have arrived now
+                            System.out.println(">> Received missing packets");
+                            System.out.println(">> Packet Array Size: " + packetArray.size());
+                            this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                            missingSequences.remove((Integer)seq);
+                            if (missingSequences.size() == 0) {
+                                System.out.println(">> Sending ACK for missing packets: ");
+                                this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId);
+                            }
+                        } else {
+                            this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                        }
                     }
                 }
+            } catch (IOException e) {
+                if (e.getMessage().equals("Receive timed out") && isPacketMissing()) {
+                    System.out.println("[!!!] Processing socket timeout");
+                    this.rover.getSenderModule().sendNegativeAcknowledgement(missingSequences, sendingRoverId);
+                }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
-    private void notifySenderToResumeSending() {
+    /** 
+     * Method to notify sender to resume sending file
+     */
+    private void notifySender() {
         synchronized(this.rover) {
             this.rover.notifyAll();
         }
     }
+
+    /**
+     * Method to notify sending module to resend missing packets
+     * @param missingSequenceArray  byte[]
+     */
+    private void notifySenderToResendPackets(byte[] missingSequenceArray) {
+        System.out.println(">> Notifying sender to resend missing packets");
+        this.rover.getSenderModule().setResendFlag(true);
+        List<Integer> tempList = new ArrayList<>();
+        for (int index = 0; index < missingSequenceArray.length; index += 4) {
+            tempList.add(
+                (missingSequenceArray[index] << 24 |
+                missingSequenceArray[index + 1] << 16 |
+                missingSequenceArray[index + 2] << 8 |
+                missingSequenceArray[index + 3])
+            );
+        }
+        this.rover.getSenderModule().setMissingSequenceNumbers(tempList);
+        notifySender();
+    }
+
     /**
      * Method to set the file extension of the output file
      */
@@ -227,18 +276,19 @@ public class Receiver extends Thread {
     private boolean isPacketMissing() {
         boolean isMissing = false;
         Set<Integer> sequences = packetArray.keySet();
-        System.out.println("Set of all SEQ: " + Arrays.toString(sequences.toArray()));
         int minSequence = previousStartSeqOfPacketArray;
-        System.out.println("Min Sequence: " + minSequence);
         int maxSequence = previousStartSeqOfPacketArray + (BUFFER_SIZE - 1);
-        System.out.println("Max Sequence: " + maxSequence);
         for (int index = minSequence; index <= maxSequence; index++) {
             if (!sequences.contains(index)) {
                 isMissing = true;
                 missingSequences.add(index);
             }
         }
-        if(!isMissing) System.out.println("No Missing Packets...");
+        if(!isMissing) {
+            System.out.println(">> No Missing Packets...");
+        } else {
+            System.out.println(">> Missing packets with sequence numbers: " + Arrays.toString(missingSequences.toArray()));
+        }
         return isMissing;
     }
 
@@ -255,11 +305,11 @@ public class Receiver extends Thread {
         int maxSequence = Collections.max(sequenceList);
         for (int index = minSequence; index <= maxSequence; index++) {
             if (index != sequenceList.get(index - minSequence)) {
-                System.out.println("Packet arrived out of sequence: " + sequenceList.get(index));
+                System.out.println(">> Packet arrived out of sequence: " + sequenceList.get(index));
                 return false;
             }
         }
-        System.out.println("Packets arrived in sequence....");
+        System.out.println(">> Packets arrived in sequence....");
         return true;
     }
 
@@ -269,17 +319,29 @@ public class Receiver extends Thread {
      */
     private TreeMap<Integer, byte[]> arrangePacketsInSequence() {
         TreeMap<Integer, byte[]> sortedPackets = new TreeMap<>();
-        System.out.println("Sorting packets in sequence....");
+        System.out.println(">> Sorting packets in sequence....");
         sortedPackets.putAll(packetArray);
+        previousStartSeqOfPacketArray = sortedPackets.firstKey();
+        currentStartSeqOfPacketArray = sortedPackets.lastKey() + 1;
         return sortedPackets;
     }
 
     /**
      * Method to check if the incoming packet is an acknowledgement
-     * @return  boolean
+     * @param incomingBytes byte[]
+     * @return              boolean
      */
     private boolean incomingPacketIsAcknowledgement(byte[] incomingBytes) {
         return (incomingBytes[RdtProtocol.ACK_FLAG_POSITION] == TRUE);
+    }
+
+    /**
+     * Method to check if the incoming packet is a negative acknowledgement
+     * @param incomingBytes byte[]
+     * @return              boolean
+     */
+    private boolean incomingPacketIsNegativeAcknowledgement(byte[] incomingBytes) {
+        return (incomingBytes[RdtProtocol.NAK_FLAG_POSITION] == TRUE);
     }
 
     /**
@@ -292,14 +354,19 @@ public class Receiver extends Thread {
     private void processIncomingBytes(byte[] incomingBytes, int seq, byte sendingRoverId) throws IOException {
         byte[] relevantBytes = RdtProtocol.extractData(incomingBytes);
         if (packetArray.size() < BUFFER_SIZE - 1) {
-            System.out.println("Receiving SEQ: " + seq);
             packetArray.put(seq, relevantBytes);
+            // System.out.println("Packet size is less than buffer size: " + packetArray.size());
         } else if (packetArray.size() == BUFFER_SIZE - 1) {
-            System.out.println("Receiving SEQ: " + seq);
-            // System.out.println("Buffer SIZE: " + (BUFFER_SIZE - packetArray.size()) + " | Packet Size: " + packetArray.size());
             packetArray.put(seq, relevantBytes);
+            // System.out.println("Packet size is equal to buffer size: " + packetArray.size());
+            // previousStartSeqOfPacketArray = currentStartSeqOfPacketArray;
+            // currentStartSeqOfPacketArray = seq+1;
+            List<Integer> tempList = new ArrayList<>();
+            for (Map.Entry<Integer, byte[]> entry : packetArray.entrySet()) {
+                tempList.add(entry.getKey());
+            }
             previousStartSeqOfPacketArray = currentStartSeqOfPacketArray;
-            currentStartSeqOfPacketArray = seq+1;
+            currentStartSeqOfPacketArray = Collections.max(tempList) + 1;
             if (!isPacketMissing()) {
                 if (isPacketInSequence()) {
                     this.writeToFile(packetArray);
@@ -310,9 +377,10 @@ public class Receiver extends Thread {
                 this.runGarbageCollector();
                 this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId);
             } else {
-                System.out.println("Missing packets with SEQ: " + Arrays.toString(missingSequences.toArray()));
+                this.rover.getSenderModule().sendNegativeAcknowledgement(missingSequences, sendingRoverId);
             }
-            System.out.println("Next exptected SEQ: " + currentStartSeqOfPacketArray);
+            System.out.println(">> Next exptected SEQ: " + currentStartSeqOfPacketArray);
+            System.out.println("------------------------------------------------------------------------------");
         }
     }
 
@@ -321,7 +389,7 @@ public class Receiver extends Thread {
      * @throws IOException
      */
     private void writeToFile(Map<Integer, byte[]> sortedPackets) throws IOException {
-        System.out.println("Writing to file....");
+        System.out.println(">> Writing to file....");
         for (Map.Entry<Integer, byte[]> entry : sortedPackets.entrySet()) {
             fos.write(entry.getValue());
         }
@@ -331,15 +399,15 @@ public class Receiver extends Thread {
      * Method to empty the receiving buffer
      */
     private void runGarbageCollector() {
-        System.out.println("Cleaning buffer to accept new packets....");
-        this.packetArray = new LinkedHashMap<>();
+        System.out.println(">> Cleaning buffer to accept new packets....");
+        this.packetArray = new LinkedHashMap<>(BUFFER_SIZE);
     }
 
     /**
      * Only for testing purposes
      */
     public static void main(String[] args) {
-       Receiver r = new Receiver(new Rover((byte) 1, (byte)2, 3000, "224.0.0.1"));
+       Receiver r = new Receiver(new Rover((byte) 1, (byte)2, 3000, "224.0.0.1", "receiver"));
        byte[] arr = {(byte)1, (byte)2};
        r.packetArray.put(1, arr);
        int size = r.packetArray.size();

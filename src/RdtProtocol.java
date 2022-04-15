@@ -8,6 +8,7 @@ public class RdtProtocol {
     public static final int DATAGRAM_LENGTH           = 1_024 * 2;
     public static final int SEQ_END_POSITION          = 3;
     public static final int ACK_FLAG_POSITION         = 6;
+    public static final int NAK_FLAG_POSITION         = 7;
     public static final int FIXED_HEADER_SIZE         = 12;
     public static final int SEQ_START_POSITION        = 0;
     public static final int SOURCE_ID_POSITION        = 4;
@@ -192,5 +193,5 @@ public class RdtProtocol {
             dataBytes[ind++] = udpData[index];
         }
         return dataBytes;
-    } 
+    }
 }

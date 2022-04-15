@@ -17,18 +17,20 @@ public class Rover extends Thread {
     private byte destinationRoverId; // Rover to which data needs to be sent
     public static Rover rover = null; // an instance of this class
     private String filePath = null; // path of the file to be sent by this rover
+    private String action = null; // Sender or Receiver
 
     /**
      * Constructor for the Rover class
      * @param roverId   int
      * @param port      int
      */
-    public Rover(byte roverId, byte destinationRoverId, int port, String multicastIP) {
+    public Rover(byte roverId, byte destinationRoverId, int port, String multicastIP, String action) {
         this.roverId = roverId;
         this.destinationRoverId = destinationRoverId;
         this.destinationPort = MULTICAST_PORT;
         this.listeningPort = port;
         this.multicastIP = multicastIP;
+        this.action = action;
         Receiver.createInstance(this);
         this.receiverModule = Receiver.fetchInstance();
         System.out.println("Initializing Receiver Module: " + this.receiverModule.hashCode());
@@ -47,9 +49,9 @@ public class Rover extends Thread {
      * @param port                  int
      * @param multicastIP           String
      */
-    public static void createInstance(byte roverId, byte destinationRoverId, int port, String multicastIP) {
+    public static void createInstance(byte roverId, byte destinationRoverId, int port, String multicastIP, String action) {
         if (rover == null) {
-            rover = new Rover(roverId, destinationRoverId, port, multicastIP);
+            rover = new Rover(roverId, destinationRoverId, port, multicastIP, action);
         }
     }
 
@@ -84,6 +86,14 @@ public class Rover extends Thread {
      */
     public int getPort() {
         return this.listeningPort;
+    }
+
+    /**
+     * Getter method for action
+     * @return  String
+     */
+    public String getAction() {
+        return this.action;
     }
 
     /**
@@ -158,7 +168,7 @@ public class Rover extends Thread {
      * @param args
      */
     public static void main(String[] args) {
-        Rover rover = new Rover((byte)1, (byte)2, 3000, "224.0.0.1");
+        Rover rover = new Rover((byte)1, (byte)2, 3000, "224.0.0.1", "sender");
         rover.setFilePath("randomfile.txt");
         System.out.println(rover.getFileExtension());
     }

@@ -23,8 +23,10 @@ public class Sender extends Thread {
     private List<RdtProtocol> segments; // list of segments to be sent over the socket
     private byte destinationRoverId = 0;
     private int receiverPort; // port of the receiver
-    private static int nextSeq = 0;
-    private static boolean okay = true;
+    private static int nextSeq = 0; //next expected sequence number
+    private static int sendersSeq = 0; // seq of the sender
+    private static boolean resend = false; // flag to resend packets
+    private List<Integer> missingSequenceNumbers = new ArrayList<>();
 
     /**
      * Constructor for the Sender
@@ -52,6 +54,18 @@ public class Sender extends Thread {
         this.file = file;
     }
 
+    public void setMissingSequenceNumbers(List<Integer> missingSequences) {
+        this.missingSequenceNumbers = missingSequences;
+    }
+
+    /**
+     * Setter for resend flag
+     * @param value boolean
+     */
+    public void setResendFlag(boolean value) {
+        resend = value;
+    }
+
     /**
      * Method to send data on the socket
      */
@@ -61,6 +75,7 @@ public class Sender extends Thread {
             int sequence = 0;
             int offset = 0;
             byte[] buf = fis.readAllBytes();
+            int counter = 0; // TO BE DELETED
             while(offset < buf.length) {
                 for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
                     byte[] temp = this.sliceInEqualParts(buf, offset);
@@ -75,7 +90,10 @@ public class Sender extends Thread {
                         this.address,
                         this.rover.getPort()
                     );
-                    System.out.println("Sending SEQ: " + protocol.getSeq());
+                    counter++; // TO BE DELETED
+                    if (counter < 2) { // TO BE DELETED
+                        continue; // TO BE DELETED
+                    } // TO BE DELETED
                     this.socket.send(packet);
                     offset += temp.length;
                 }
@@ -86,40 +104,108 @@ public class Sender extends Thread {
         }
     }
 
+    /**
+     * Method to wait for acknowledgement to be received from the receiver thread
+     */
     private void waitForAcknowledgement() {
         synchronized(this.rover) {
             try {
                 this.rover.wait();
-                System.out.println("Resume sending");    
-            } catch (InterruptedException e) {
-                if (!okay) {
-                    System.out.println("Handle this scenario");
+                if (resend) {
+                    this.resendMissingPackets();
+                    this.waitForAcknowledgement();
                 }
+                System.out.println(">> Resume sending");
+                sleep(50);   
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
     }
 
+    private void resendMissingPackets() {
+        System.out.println(">> Inside Resend Packet:");
+        for (RdtProtocol protocol : this.segments) {
+            for (int missingSequence : missingSequenceNumbers) {
+                if (missingSequence == 0) continue;
+                // System.out.println("Missing sequence numbers: " + missingSequence);
+                if (missingSequence == protocol.getSeq()) {
+                    packet = new DatagramPacket(
+                        protocol.getByteStream(),
+                        protocol.getByteStream().length,
+                        this.address,
+                        this.rover.getPort()
+                    );
+                    try {
+                        System.out.println(">> Re-sending missing packet: " + missingSequence);
+                        this.socket.send(packet);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        resend = false;
+    }
+
+    /**
+     * Method to send acknowledgement
+     * @param ack                   int
+     * @param destinationRoverId    byte
+     */
     public void sendAcknowledgement(int ack, byte destinationRoverId) {
         RdtProtocol protocol = new RdtProtocol(null, this.rover.getRoverId(), destinationRoverId);
-        protocol.setSeq(1);
+        protocol.setSeq(sendersSeq + 1);
         protocol.setAck(true);
-        protocol.setAcknowledgementNumber(ack);;
+        protocol.setAcknowledgementNumber(ack);
         protocol.prepareSegment();
         this.segments.add(protocol);
-        System.out.println("Sending ACK to: " + destinationRoverId);
+        System.out.println(">> Sending ACK to: " + this.getIpAddressFromRoverId(destinationRoverId));
         packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.receiverPort);
         try {
-            sleep(300);
             this.socket.send(packet);
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    /**
+     * Method to send negative acknowledgement
+     * @param missingSequences      List<Integer>
+     * @param destinationRoverId    byte
+     */
+    public void sendNegativeAcknowledgement(List<Integer> missingSequences, byte destinationRoverId) {
+        RdtProtocol protocol = new RdtProtocol(this.convertIntegerListToByteArray(missingSequences), this.rover.getRoverId(), destinationRoverId);
+        protocol.setSeq(sendersSeq + 1);
+        protocol.setNak(true);
+        protocol.prepareSegment();
+        this.segments.add(protocol);
+        System.out.println(">> Sending NAK to: " + this.getIpAddressFromRoverId(destinationRoverId));
+        packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.receiverPort);
+        try{
+            this.socket.send(packet);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Method to check if received acknowledgement is as expected
+     * @param ack   int
+     * @return      boolean
+     */
     public boolean verifyAcknowledgement(int ack) {
         return ack == nextSeq;
     }
 
+    /**
+     * Method to slice an array into equal size arrays depending on the size of the Datagram
+     * @param byteArray byte[]
+     * @param start     int
+     * @return          byte[]
+     */
     private byte[] sliceInEqualParts(byte[] byteArray, int start) {
         byte[] temp = new byte[RdtProtocol.DATAGRAM_LENGTH];
         for (int index = 0; index < temp.length; index++) {
@@ -133,5 +219,31 @@ public class Sender extends Thread {
             }
         }
         return temp;
+    }
+
+    /**
+     * Method to convert Rover ID to IP Address
+     * @param id    byte
+     * @return      String
+     */
+    private String getIpAddressFromRoverId(byte id) {
+        return ("10.0.0." + id);
+    }
+
+    /**
+     * Method to convert a list of integers to an array of bytes
+     * @param numbers
+     * @return
+     */
+    private byte[] convertIntegerListToByteArray(List<Integer> numbers) {
+        byte[] byteArray = new byte[numbers.size() * 4];
+        int index = 0;
+        for (int number : numbers) {
+           byteArray[index++] = (byte) (number >> 24);
+           byteArray[index++] = (byte) (number >> 16);
+           byteArray[index++] = (byte) (number >> 8);
+           byteArray[index++] = (byte) (number);
+        }
+        return byteArray;
     }
 }
