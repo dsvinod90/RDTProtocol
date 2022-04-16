@@ -1,7 +1,3 @@
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 /**
  * This is the class that outlines the custom reliable data transfer protocol which sits on top of UDP.
  * @author Vinod Dalavai - vd1605
@@ -14,16 +10,18 @@ public class RdtProtocol {
     public static final int ACK_FLAG_POSITION         = 6;
     public static final int NAK_FLAG_POSITION         = 7;
     public static final int FIN_FLAG_POSITION         = 8;
-    public static final int FIXED_HEADER_SIZE         = 13;
+    public static final int FIXED_HEADER_SIZE         = 14;
     public static final int SEQ_START_POSITION        = 0;
     public static final int SOURCE_ID_POSITION        = 4;
+    public static final int COMMAND_FLAG_POSITION     = 9;
     public static final int DESTINATION_ID_POSITION   = 5;
-    public static final int ACK_NUMBER_END_POSITION   = 12;
-    public static final int ACK_NUMBER_START_POSITION = 9;
+    public static final int ACK_NUMBER_END_POSITION   = 13;
+    public static final int ACK_NUMBER_START_POSITION = 10;
     // Declare class fields
     private int seq; // Sequence number
     private byte sourceRoverId; // ID of the rover sending the data
     private byte destinationRoverId; // ID of the rover receiving the data
+    private byte commandFlag = 0; // Value of the command flag
     private boolean ack = false; // Acknowledgement flag
     private boolean nak = false; // Negative acknowledgement flag
     private boolean fin = false; // Finish flag
@@ -154,6 +152,14 @@ public class RdtProtocol {
     }
 
     /**
+     * Method for setting command flag
+     * @param value
+     */
+    public void setCommandFlag(byte value) {
+        this.commandFlag = value;
+    }
+
+    /**
      * Method to prepare segment to be sent over the RDT
      */
     public void prepareSegment() {
@@ -167,6 +173,7 @@ public class RdtProtocol {
         byteSequence[index++] = (this.ack) ? (byte)1 : (byte)0;
         byteSequence[index++] = (this.nak) ? (byte)1 : (byte)0;
         byteSequence[index++] = (this.fin) ? (byte)1 : (byte)0;
+        byteSequence[index++] = this.commandFlag;
         byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 24);
         byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 16);
         byteSequence[index++] = (byte) (this.acknowledgementNumber >>> 8);

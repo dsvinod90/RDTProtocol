@@ -15,7 +15,8 @@ public class Main {
         String multicastIP = args[3];
         String role = args[4];
         String command = args[5];
-        Rover.createInstance(currentRoverId, toRoverId, currentRoverPort, multicastIP, role);
+        String filePath = null;
+        Rover.createInstance(currentRoverId, toRoverId, currentRoverPort, multicastIP, role, Byte.valueOf(command));
         Rover rover = Rover.fetchInstance();
         System.out.println("Rover deployed on the lunar surface");
         ThreadPoolManager.getThread().submit(rover);
@@ -24,15 +25,20 @@ public class Main {
         "\t Rover ID: " + rover.getRoverId() + "\n" +
         "\t IP Address: " + rover.getIpAddress());
         System.out.println();
-        if (Integer.parseInt(command) == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.CLICK) && role.equalsIgnoreCase(CommandMap.Constants.SENDER)) {
-            Random random = new Random();
-            String filePath = 
-            "/Users/VinodDalavai/Documents/2nd Semester/Networks-651/Project3/LunarRover/src/surface_2" +
-            // random.nextInt(1) + 
-            ".jpg";
-            System.out.println("Sending file " + filePath);
-            rover.setFilePath(filePath);
-            rover.sendFile();
+        if (role.equalsIgnoreCase(CommandMap.Constants.SENDER)) {
+            if (Integer.parseInt(command) == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.CLICK)) {
+                if (args.length == 7 && !args[6].equals(" ")) {
+                    filePath = args[6];
+                } else {
+                    Random random = new Random();
+                    filePath = "/Users/VinodDalavai/Documents/2nd Semester/Networks-651/Project3/LunarRover/src/surface_" + random.nextInt(3) + ".jpg";
+                }
+                System.out.println("Sending file " + filePath);
+                rover.setFilePath(filePath);
+                rover.sendFile();
+            } else {
+                rover.sendCommand();
+            }
         }
     }
 }

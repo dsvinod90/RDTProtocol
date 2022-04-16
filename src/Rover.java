@@ -19,19 +19,21 @@ public class Rover extends Thread {
     public static Rover rover = null; // an instance of this class
     private String filePath = null; // path of the file to be sent by this rover
     private String action = null; // Sender or Receiver
+    private byte command; // command instructed by the operator of the Rover
 
     /**
      * Constructor for the Rover class
      * @param roverId   int
      * @param port      int
      */
-    public Rover(byte roverId, byte destinationRoverId, int port, String multicastIP, String action) {
+    public Rover(byte roverId, byte destinationRoverId, int port, String multicastIP, String action, byte command) {
         this.roverId = roverId;
         this.destinationRoverId = destinationRoverId;
         this.destinationPort = MULTICAST_PORT;
         this.listeningPort = port;
         this.multicastIP = multicastIP;
         this.action = action;
+        this.command = command;
         Receiver.createInstance(this);
         this.receiverModule = Receiver.fetchInstance();
         System.out.println("Initializing Receiver Module: " + this.receiverModule.hashCode());
@@ -50,9 +52,9 @@ public class Rover extends Thread {
      * @param port                  int
      * @param multicastIP           String
      */
-    public static void createInstance(byte roverId, byte destinationRoverId, int port, String multicastIP, String action) {
+    public static void createInstance(byte roverId, byte destinationRoverId, int port, String multicastIP, String action, byte command) {
         if (rover == null) {
-            rover = new Rover(roverId, destinationRoverId, port, multicastIP, action);
+            rover = new Rover(roverId, destinationRoverId, port, multicastIP, action, command);
         }
     }
 
@@ -143,11 +145,21 @@ public class Rover extends Thread {
      */
     public void sendFile() {
         this.senderModule.setFile(new File(this.filePath));
+        this.senderModule.setSendFile(true);
+        this.senderModule.setCommandFlag((byte) 5);
         this.receiverModule.setFileExtension(getFileExtension());
         ExecutorService service = ThreadPoolManager.getThread();
         service.execute(this.senderModule);
         System.out.println("Sender terminating...");
         service.shutdown();
+    }
+
+    public void sendCommand() {
+        System.out.println("Sending command to Rover: " + this.command);
+        this.senderModule.setSendFile(false);
+        this.senderModule.setCommandFlag(this.command);
+        ExecutorService service = ThreadPoolManager.getThread();
+        service.execute(this.senderModule);
     }
 
     /**

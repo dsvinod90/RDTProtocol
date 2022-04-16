@@ -18,12 +18,12 @@ public class CommandMap {
     }
 
     private static void setRoverCommands() {
-        ROVER_COMMANDS.put("Standby", -1);
-        ROVER_COMMANDS.put("Move Forward", 0);
-        ROVER_COMMANDS.put("Move Back", 1);
-        ROVER_COMMANDS.put("Turn Left", 2);
-        ROVER_COMMANDS.put("Turn Right", 3);
-        ROVER_COMMANDS.put("Capture", 4);
+        ROVER_COMMANDS.put("Standby", 0);
+        ROVER_COMMANDS.put("Move Forward", 1);
+        ROVER_COMMANDS.put("Move Back", 2);
+        ROVER_COMMANDS.put("Turn Left", 3);
+        ROVER_COMMANDS.put("Turn Right", 4);
+        ROVER_COMMANDS.put("Capture", 5);
     }
 
     class Constants {

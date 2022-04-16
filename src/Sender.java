@@ -4,15 +4,12 @@
  */
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +26,8 @@ public class Sender extends Thread {
     private static int nextSeq = 0; //next expected sequence number
     private static int sendersSeq = 0; // seq of the sender
     private static boolean resend = false; // flag to resend packets
+    private static boolean sendFile = false; // flag to send file
+    private static byte commandFlag = 0; // command value
     private List<Integer> missingSequenceNumbers = new ArrayList<>(); //sequences missing
 
     /**
@@ -57,6 +56,14 @@ public class Sender extends Thread {
         this.file = file;
     }
 
+    /**
+     * Setter for send file flag
+     * @param flag  boolean
+     */
+    public void setSendFile(boolean flag) {
+        sendFile = flag;
+    }
+
     public void setMissingSequenceNumbers(List<Integer> missingSequences) {
         this.missingSequenceNumbers = missingSequences;
     }
@@ -70,40 +77,59 @@ public class Sender extends Thread {
     }
 
     /**
+     * Setter for command flag
+     * @param command
+     */
+    public void setCommandFlag(byte command) {
+        commandFlag = command;
+    }
+
+    /**
      * Method to send data on the socket
      */
     public void run() {
         try {
-            FileInputStream fis = new FileInputStream(this.file);
             int sequence = 0;
-            byte[] tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
-            boolean quit = false;
-            while (!quit) {
-                for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
-                    if (fis.read(tempBuffer) == -1) quit = true;
-                    RdtProtocol protocol = new RdtProtocol(tempBuffer, rover.getRoverId(), destinationRoverId);
-                    protocol.setSeq(++sequence);
-                    nextSeq = sequence+1;
-                    protocol.prepareSegment();
-                    this.segments.add(protocol);
-                    // System.out.println("Byte stream length: " + protocol.getByteStream().length);
-                    packet = new DatagramPacket(
-                        protocol.getByteStream(),
-                        protocol.getByteStream().length,
-                        this.address,
-                        this.rover.getPort()
-                    );
-                    this.socket.send(packet);
-                    tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
+            if (!sendFile) {
+                RdtProtocol protocol = new RdtProtocol(null, rover.getRoverId(), destinationRoverId);
+                protocol.setSeq(++sequence);
+                protocol.setCommandFlag(commandFlag);
+                protocol.prepareSegment();
+                this.segments.add(protocol);
+                System.out.println(">> Sending COMMAND to: " + this.getIpAddressFromRoverId(destinationRoverId));
+                packet = new DatagramPacket(protocol.getByteStream(), protocol.getByteStream().length, this.address, this.receiverPort);
+                this.socket.send(packet);
+            } else {
+                FileInputStream fis = new FileInputStream(this.file);
+                byte[] tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
+                boolean quit = false;
+                while (!quit) {
+                    for(int count = 0; count < Receiver.BUFFER_SIZE; count++) {
+                        if (fis.read(tempBuffer) == -1) quit = true;
+                        RdtProtocol protocol = new RdtProtocol(tempBuffer, rover.getRoverId(), destinationRoverId);
+                        protocol.setSeq(++sequence);
+                        protocol.setCommandFlag(commandFlag);
+                        nextSeq = sequence+1;
+                        protocol.prepareSegment();
+                        this.segments.add(protocol);
+                        // System.out.println("Byte stream length: " + protocol.getByteStream().length);
+                        packet = new DatagramPacket(
+                            protocol.getByteStream(),
+                            protocol.getByteStream().length,
+                            this.address,
+                            this.rover.getPort()
+                        );
+                        this.socket.send(packet);
+                        tempBuffer = new byte[RdtProtocol.DATAGRAM_LENGTH];
+                    }
+                    this.waitForAcknowledgement();
                 }
-                this.waitForAcknowledgement();
+                System.out.println(">> Data sent successfully: Closing socket");
+                this.sendFinishPacket();
+                socket.close();
+                fis.close();
+                this.interrupt();
             }
-
-            System.out.println(">> Data sent successfully: Closing socket");
-            this.sendFinishPacket();
-            socket.close();
-            fis.close();
-            this.interrupt();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -163,11 +189,12 @@ public class Sender extends Thread {
      * @param ack                   int
      * @param destinationRoverId    byte
      */
-    public void sendAcknowledgement(int ack, byte destinationRoverId) {
+    public void sendAcknowledgement(int ack, byte destinationRoverId, byte command) {
         RdtProtocol protocol = new RdtProtocol(null, this.rover.getRoverId(), destinationRoverId);
         protocol.setSeq(sendersSeq + 1);
         protocol.setAck(true);
         protocol.setAcknowledgementNumber(ack);
+        protocol.setCommandFlag(command);
         protocol.prepareSegment();
         this.segments.add(protocol);
         System.out.println(">> Sending ACK to: " + this.getIpAddressFromRoverId(destinationRoverId));
@@ -203,6 +230,7 @@ public class Sender extends Thread {
         RdtProtocol protocol = new RdtProtocol(null, this.rover.getRoverId(), this.destinationRoverId);
         protocol.setSeq(sendersSeq + 1);
         protocol.setFin(true);
+        protocol.setCommandFlag(commandFlag);
         protocol.prepareSegment();
         this.segments.add(protocol);
         System.out.println(">> Sending FIN to: " + this.getIpAddressFromRoverId(destinationRoverId));
@@ -224,27 +252,6 @@ public class Sender extends Thread {
     }
 
     /**
-     * Method to slice an array into equal size arrays depending on the size of the Datagram
-     * @param byteArray byte[]
-     * @param start     int
-     * @return          byte[]
-     */
-    // private byte[] sliceInEqualParts(byte[] byteArray, int start) {
-    //     byte[] temp = new byte[RdtProtocol.DATAGRAM_LENGTH];
-    //     for (int index = 0; index < temp.length; index++) {
-    //         try{
-    //             temp[index] = byteArray[index + start];
-    //         } catch (ArrayIndexOutOfBoundsException ex) {
-    //             // temp[index] = (byte) 101;
-    //             // temp[index+1] = (byte) 111;
-    //             // temp[index+2] = (byte) 102;
-    //             break;
-    //         }
-    //     }
-    //     return temp;
-    // }
-
-    /**
      * Method to convert Rover ID to IP Address
      * @param id    byte
      * @return      String
@@ -262,11 +269,6 @@ public class Sender extends Thread {
         byte[] byteArray = new byte[numbers.size() * 4];
         int index = 0;
         for (int number : numbers) {
-            // byte[] temp = ByteBuffer.allocate(4).order(ByteOrder.nativeOrder()).putInt(number).array();
-            // byteArray[index++] = temp[3];
-            // byteArray[index++] = temp[2];
-            // byteArray[index++] = temp[1];
-            // byteArray[index++] = temp[0];
            byteArray[index++] = (byte) (number >>> 24);
            byteArray[index++] = (byte) (number >>> 16);
            byteArray[index++] = (byte) (number >>> 8);

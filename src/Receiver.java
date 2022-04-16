@@ -103,37 +103,59 @@ public class Receiver extends Thread {
                 // if receiveing rover id is this rover or is all the rovers
                 if (receivingRoverId == this.rover.getRoverId() || receivingRoverId == 0) {
                     // if incoming packet is an acknowledgement
-                    if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
-                        // this.rover.getSenderModule().wait();
-                        currentAck = this.getAcknowledgementNumber(incomingBytes);
-                        System.out.println(">> ACK Received: " + currentAck);
-                        if (this.rover.getSenderModule().verifyAcknowledgement(currentAck)) {
-                            System.out.println(">> ALL OKAY!");
-                            this.notifySender();
+                    if (!this.requestForFileTransfer(incomingBytes)) {
+                        byte byteCommand = incomingBytes[RdtProtocol.COMMAND_FLAG_POSITION];
+                        int command = (int) byteCommand;
+                        System.out.println(">> Received Command: " + command);
+                        if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
+                            System.out.println(">> Received ACK");
+                            break;
                         }
-                        // if incoming packet is a negative acknowledgement
-                    } else if (this.incomingPacketIsNegativeAcknowledgement(incomingBytes)) {
-                        System.out.println(">> NAK Received: ");
-                        byte[] missingSequenceArray = RdtProtocol.extractData(incomingBytes);
-                        this.notifySenderToResendPackets(missingSequenceArray);
-                    } else if (this.incomingPacketIsFinishMessage(incomingBytes)) {
-                        System.out.println(">> FIN Received: ");
-                        System.out.println(">> File has been downloaded");
-                        System.out.println("------------------------------------------------------------------------------");
-                        break;
-                    } else { // if incoming packet is a datagram with file contents
-                        if (missingSequences.size() > 0 && missingSequences.contains(seq)) { // if there are missing packets check if all have arrived now
-                            System.out.println(">> Received missing packets");
-                            System.out.println(">> Packet Array Size: " + packetArray.size());
-                            this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
-                            missingSequences.remove((Integer)seq);
-                            if (missingSequences.size() == 0) {
-                                System.out.println(">> Sending ACK for missing packets: ");
-                                this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId);
+                        if (command == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.FORWARD)) {
+                            System.out.println("Rover has moved forward one unit of distance");
+                        } else if (command == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.BACK)) {
+                            System.out.println("Rover has moved back one unit of distance");
+                        } else if (command == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.LEFT)) {
+                            System.out.println("Rover has turned left");
+                        } else if (command == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.RIGHT)) {
+                            System.out.println("Rover has turned right");
+                        }
+                        System.out.println(">> Sending acknowledgement for movement action");
+                        this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId, byteCommand);
+                    } else {
+                        if (this.incomingPacketIsAcknowledgement(incomingBytes)) {
+                            // this.rover.getSenderModule().wait();
+                            currentAck = this.getAcknowledgementNumber(incomingBytes);
+                            System.out.println(">> ACK Received: " + currentAck);
+                            if (this.rover.getSenderModule().verifyAcknowledgement(currentAck)) {
+                                System.out.println(">> ALL OKAY!");
+                                this.notifySender();
                             }
-                        } else {
-                            this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                            // if incoming packet is a negative acknowledgement
+                        } else if (this.incomingPacketIsNegativeAcknowledgement(incomingBytes)) {
+                            System.out.println(">> NAK Received: ");
+                            byte[] missingSequenceArray = RdtProtocol.extractData(incomingBytes);
+                            this.notifySenderToResendPackets(missingSequenceArray);
+                        } else if (this.incomingPacketIsFinishMessage(incomingBytes)) {
+                            System.out.println(">> FIN Received: ");
+                            System.out.println(">> File has been downloaded");
+                            System.out.println("------------------------------------------------------------------------------");
+                            break;
+                        } else { // if incoming packet is a datagram with file contents
+                            if (missingSequences.size() > 0 && missingSequences.contains(seq)) { // if there are missing packets check if all have arrived now
+                                System.out.println(">> Received missing packets");
+                                System.out.println(">> Packet Array Size: " + packetArray.size());
+                                this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                                missingSequences.remove((Integer)seq);
+                                if (missingSequences.size() == 0) {
+                                    System.out.println(">> Sending ACK for missing packets: ");
+                                    this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId, (byte) 5);
+                                }
+                            } else {
+                                this.processIncomingBytes(incomingBytes, seq, sendingRoverId);
+                            }
                         }
+
                     }
                 }
             } catch (IOException e) {
@@ -143,6 +165,14 @@ public class Receiver extends Thread {
                 }
             }
         }
+    }
+
+    /**
+     * Method to check if the reqeust is for file transfer
+     * @param   incomingBytes   byte[]
+     */
+    private boolean requestForFileTransfer(byte[] incomingBytes) {
+        return (incomingBytes[RdtProtocol.COMMAND_FLAG_POSITION] == CommandMap.ROVER_COMMANDS.get(CommandMap.Constants.CLICK));
     }
 
     /** 
@@ -259,22 +289,6 @@ public class Receiver extends Thread {
     }
 
     /**
-     * Method to check if the packet received is the last packet to be received from the sender
-     * @param packet    byte[]
-     * @return          boolean
-     */
-    // private boolean isLastPacket(byte[] packet) {
-    //     int index = packet.length - 1;
-    //     while (index >= 2) {
-    //         if (packet[index] == 102 && packet[index - 1] == 111 && packet[index - 2] == 101) {
-    //             return true;
-    //         }
-    //         index --;
-    //     }
-    //     return false;
-    // }
-
-    /**
      * Method to check if any packet is missing based on the sequence numbers received
      * @return boolean
      */
@@ -380,7 +394,7 @@ public class Receiver extends Thread {
                     this.writeToFile(sorted);
                 }
                 this.runGarbageCollector();
-                this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId);
+                this.rover.getSenderModule().sendAcknowledgement(currentStartSeqOfPacketArray, sendingRoverId, (byte) 5);
             } else {
                 this.rover.getSenderModule().sendNegativeAcknowledgement(missingSequences, sendingRoverId);
             }
@@ -406,16 +420,5 @@ public class Receiver extends Thread {
     private void runGarbageCollector() {
         System.out.println(">> Cleaning buffer to accept new packets....");
         this.packetArray = new LinkedHashMap<>(BUFFER_SIZE);
-    }
-
-    /**
-     * Only for testing purposes
-     */
-    public static void main(String[] args) {
-       Receiver r = new Receiver(new Rover((byte) 1, (byte)2, 3000, "224.0.0.1", "receiver"));
-       byte[] arr = {(byte)1, (byte)2};
-       r.packetArray.put(1, arr);
-       int size = r.packetArray.size();
-       System.out.println(size);
     }
 }
